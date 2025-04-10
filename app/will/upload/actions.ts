@@ -3,7 +3,6 @@
 import Arweave from "arweave";
 import { z } from "zod";
 import * as crypto from "crypto";
-import * as fs from "fs";
 
 // Define the input schema for the action using Zod
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -18,6 +17,10 @@ const UploadWillSchema = z.object({
       (file) => ACCEPTED_FILE_TYPES.includes(file?.type),
       "Only .pdf files are accepted."
     ),
+  guardianEmail: z
+    .string()
+    .email("Please enter a valid email address.")
+    .min(1, "Guardian email is required."),
 });
 
 // Define the structure of the response from the action
@@ -147,10 +150,10 @@ export async function uploadWillToArweave(
   prevState: UploadResult | null,
   formData: FormData
 ): Promise<UploadResult> {
-
   // 1. Validate form data
   const validatedFields = UploadWillSchema.safeParse({
     willFile: formData.get("willFile"),
+    guardianEmail: formData.get("guardianEmail"),
   });
 
   if (!validatedFields.success) {
@@ -165,7 +168,10 @@ export async function uploadWillToArweave(
     };
   }
 
-  const { willFile } = validatedFields.data;
+  const { willFile, guardianEmail } = validatedFields.data;
+
+  // Log the guardian email
+  console.log("Guardian Email:", guardianEmail);
 
   // 2. Initialize Arweave
   const arweave = Arweave.init({
@@ -219,24 +225,55 @@ export async function uploadWillToArweave(
     const keyTxId = await uploadToArweave(encryptedSymmetricKey, "application/octet-stream", wallet, arweave);
     console.log(`Encrypted symmetric key uploaded with transaction ID: ${keyTxId}`);
 
-    // 10. Retrieve and Decrypt Data (Verification Step)
-    console.log("Retrieving and decrypting data for verification...");
+    // // 10. Retrieve and Decrypt Data (Verification Step)
+    // console.log("Retrieving and decrypting data for verification...");
 
-    // Retrieve encrypted PDF from Arweave
-    const encryptedPdfRetrieved = await arweave.transactions.getData(pdfTxId, { decode: true });
-    console.log(`Retrieved encrypted PDF of size`);
+    // // Retrieve encrypted PDF from Arweave
+    // const encryptedPdfRetrieved = await arweave.transactions.getData(pdfTxId, { decode: true });
+    // console.log(`Retrieved encrypted PDF of size`);
 
-    // Retrieve encrypted symmetric key from Arweave
-    const encryptedSymmetricKeyRetrieved = await arweave.transactions.getData(keyTxId, { decode: true });
-    console.log(`Retrieved encrypted symmetric key of size`);
+    // // Retrieve encrypted symmetric key from Arweave
+    // const encryptedSymmetricKeyRetrieved = await arweave.transactions.getData(keyTxId, { decode: true });
+    // console.log(`Retrieved encrypted symmetric key of size`);
 
-    // Decrypt the PDF
-    const decryptedPdf = decryptData(encryptedPdfRetrieved, encryptedSymmetricKeyRetrieved, privateKey);
-    console.log(`Decrypted PDF size: ${decryptedPdf.byteLength} bytes`);
+    // // Decrypt the PDF
+    // const decryptedPdf = decryptData(encryptedPdfRetrieved, encryptedSymmetricKeyRetrieved, privateKey);
+    // console.log(`Decrypted PDF size: ${decryptedPdf.byteLength} bytes`);
 
-    // Optional: Save the decrypted PDF to verify correctness
-    fs.writeFileSync('decrypted_document.pdf', decryptedPdf);
-    console.log('Decryption complete. Decrypted file saved as "decrypted_document.pdf".');
+    // // Optional: Save the decrypted PDF to verify correctness
+    // fs.writeFileSync('decrypted_document.pdf', decryptedPdf);
+    // console.log('Decryption complete. Decrypted file saved as "decrypted_document.pdf".');
+
+    // 10. Store will information in database
+    console.log("Storing will information in database...");
+    try {
+      const apiUrl = process.env.API_URL || "https://api.example.com/store-will";
+
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.API_KEY || "dummy-api-key"}`
+        },
+        body: JSON.stringify({
+          guardianEmail,
+          pdfTxId,
+          keyTxId,
+          privateKey,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error("Failed to store will information:", errorData);
+        // We continue even if this fails, as the Arweave upload was successful
+      } else {
+        console.log("Will information stored successfully in database");
+      }
+    } catch (apiError) {
+      console.error("API request failed:", apiError);
+      // We continue even if this fails, as the Arweave upload was successful
+    }
 
     return {
       success: true,

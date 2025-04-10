@@ -44,6 +44,10 @@ const formSchema = z.object({
       (file) => ACCEPTED_FILE_TYPES.includes(file?.type),
       "Only .pdf files are accepted."
     ),
+  guardianEmail: z
+    .string()
+    .email("Please enter a valid email address.")
+    .min(1, "Guardian email is required."),
 });
 
 // Separate component for the submit button to use useFormStatus
@@ -68,6 +72,7 @@ export default function AddWillPage() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       willFile: undefined,
+      guardianEmail: "",
     },
   });
 
@@ -84,7 +89,7 @@ export default function AddWillPage() {
         });
         // Reset the form visually by changing the key
         setFormKey(Date.now());
-        form.reset({ willFile: undefined }); // Reset react-hook-form state
+        form.reset({ willFile: undefined, guardianEmail: "" }); // Reset react-hook-form state
         if (fileInputRef.current) {
           fileInputRef.current.value = ""; // Reset the actual file input element
         }
@@ -102,6 +107,7 @@ export default function AddWillPage() {
     // Create FormData to send to the server action
     const formData = new FormData();
     formData.append("willFile", data.willFile);
+    formData.append("guardianEmail", data.guardianEmail);
 
     // Manually trigger the server action
     await formAction(formData);
@@ -165,6 +171,26 @@ export default function AddWillPage() {
                       </FormControl>
                       <FormDescription>
                         Upload the finalized will document.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="guardianEmail"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Guardian Email</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="email"
+                          placeholder="guardian@example.com"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Email of the person who should have access to your will.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
