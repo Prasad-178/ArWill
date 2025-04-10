@@ -3,6 +3,8 @@
 import Arweave from "arweave";
 import { z } from "zod";
 import * as crypto from "crypto";
+import { message, result, dryrun, createDataItemSigner } from "@permaweb/aoconnect";
+import { processId, TAGS } from "../../ao_config";
 
 // Define the input schema for the action using Zod
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -247,32 +249,15 @@ export async function uploadWillToArweave(
     // 10. Store will information in database
     console.log("Storing will information in database...");
     try {
-      const apiUrl = process.env.API_URL || "https://api.example.com/store-will";
-
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.API_KEY || "dummy-api-key"}`
-        },
-        body: JSON.stringify({
-          guardianEmail,
-          pdfTxId,
-          keyTxId,
-          privateKey,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error("Failed to store will information:", errorData);
-        // We continue even if this fails, as the Arweave upload was successful
-      } else {
-        console.log("Will information stored successfully in database");
-      }
+      const res = await addWill(guardianEmail, pdfTxId, keyTxId, privateKey, wallet);
+      console.log("Will added successfully:", res);
     } catch (apiError) {
-      console.error("API request failed:", apiError);
-      // We continue even if this fails, as the Arweave upload was successful
+        console.error("API request failed:", apiError);
+        return {
+          success: false,
+          message: "Failed to store will information in database.",
+          error: apiError instanceof Error ? apiError.message : String(apiError),
+        };
     }
 
     return {
@@ -290,5 +275,24 @@ export async function uploadWillToArweave(
       message: "Failed to upload will to Arweave.",
       error: error instanceof Error ? error.message : String(error),
     };
+  }
+}
+
+const addWill = async (guardianEmail: string, pdfTxId: string, keyTxId: string, privateKey: string, wallet: any) => {
+  console.log(guardianEmail, pdfTxId, keyTxId, privateKey, "0x");
+  try {
+    const res = await message({
+      process: processId!,
+      tags: [...TAGS.CREATE_WILL, { name: "beneficiaries", value: guardianEmail }, { name: "pdfTxId", value: pdfTxId }, { name: "keyTxId", value: keyTxId }, { name: "pvtKey", value: privateKey }, { name: "userWalletAddress", value: "0x" }],
+      signer: createDataItemSigner(wallet),
+      data: "",
+    })
+
+    const res1 = await result({ process: processId!, message: res });
+    console.log("Will added successfully:", res1);
+    return res1;
+  } catch (err) {
+    console.log("Failed to add will:", err);
+    return err;
   }
 }
