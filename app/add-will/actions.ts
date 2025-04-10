@@ -56,6 +56,7 @@ function generateRSAKeyPair(): {
 
 // Function to encrypt data using ChaCha20-Poly1305
 function encryptData(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any,
   publicKey: string
 ): { encryptedData: Buffer; encryptedSymmetricKey: Buffer } {
@@ -89,7 +90,9 @@ function encryptData(
 
 // Function to decrypt data using ChaCha20-Poly1305
 function decryptData(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   encryptedData: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   encryptedSymmetricKey: any,
   privateKey: string
 ): Buffer {
@@ -121,7 +124,9 @@ function decryptData(
 async function uploadToArweave(
   data: Buffer,
   contentType: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   wallet: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   arweave: any
 ): Promise<string> {
   const transaction = await arweave.createTransaction({ data }, wallet);

@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useFormStatus } from "react-dom"; // Import hooks for server actions
 import { useActionState } from "react";
+import {ConnectButton, useActiveAddress, useApi} from '@arweave-wallet-kit/react';
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -54,10 +55,11 @@ function SubmitButton() {
   );
 }
 
-
 export default function AddWillPage() {
   const [formKey, setFormKey] = useState(Date.now()); // Key to force form reset
-
+  const activeAddress = useActiveAddress();
+  const api = useApi();
+  
   // useFormState hook to manage server action state
   const [state, formAction] = useActionState(uploadWillToArweave, null);
 
@@ -77,7 +79,7 @@ export default function AddWillPage() {
     if (state) {
       if (state.success === true) {
         toast.success("Success!", {
-           description: `${state.message} Transaction ID: ${state.transactionId}`,
+           description: `${state.message} Transaction ID: ${state.transactionIds}`,
            duration: 5000, // Optional: duration in ms
         });
         // Reset the form visually by changing the key
@@ -105,65 +107,97 @@ export default function AddWillPage() {
     await formAction(formData);
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [othentDetails, setOthentDetails] = useState<any>(null);
+  console.log('othentDetails', othentDetails);
+  console.log('User Email', othentDetails?.email);
+
+  useEffect(() => {
+    const getOthentDetails = async () => {
+        const details = await api?.othent?.getUserDetails();
+        setOthentDetails(details);
+    };
+    getOthentDetails();
+  }, [api]);
 
   return (
-    <div className="flex justify-center items-center min-h-screen p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Upload Will Document</CardTitle>
-          <CardDescription>
-            Please upload the will document in PDF format. Ensure it does not
-            exceed 5MB.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* Use the key to allow resetting */}
-          <Form {...form} key={formKey}>
-            {/*
-              We use form.handleSubmit for client-side validation,
-              which then calls our handleFormSubmit function.
-              handleFormSubmit creates FormData and calls the server action.
-            */}
-            <form
-              onSubmit={form.handleSubmit(handleFormSubmit)}
-              className="space-y-8"
-            >
-              <FormField
-                control={form.control}
-                name="willFile"
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                render={({ field: { onChange, value, onBlur, name, ref: rhfRef } }) => ( // Use rhfRef to avoid conflict
-                  <FormItem>
-                    <FormLabel>Will Document (PDF only)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="file"
-                        accept=".pdf"
-                        ref={fileInputRef} // Assign the ref here
-                        onChange={(e) => {
-                           // Update react-hook-form state
-                           onChange(e.target.files?.[0] ?? undefined);
-                        }}
-                        onBlur={onBlur}
-                        name={name}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Upload the finalized will document.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
+    <div className="flex flex-col justify-center items-center min-h-screen p-4 gap-6">
+      <div className="w-full max-w-md flex justify-center">
+        <ConnectButton />
+      </div>
+      
+      {activeAddress ? (
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Upload Will Document</CardTitle>
+            <CardDescription>
+              Please upload the will document in PDF format. Ensure it does not
+              exceed 5MB.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Use the key to allow resetting */}
+            <Form {...form} key={formKey}>
+              {/*
+                We use form.handleSubmit for client-side validation,
+                which then calls our handleFormSubmit function.
+                handleFormSubmit creates FormData and calls the server action.
+              */}
+              <form
+                onSubmit={form.handleSubmit(handleFormSubmit)}
+                className="space-y-8"
+              >
+                <FormField
+                  control={form.control}
+                  name="willFile"
+                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                  render={({ field: { onChange, value, onBlur, name, ref: rhfRef } }) => ( // Use rhfRef to avoid conflict
+                    <FormItem>
+                      <FormLabel>Will Document (PDF only)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="file"
+                          accept=".pdf"
+                          ref={fileInputRef} // Assign the ref here
+                          onChange={(e) => {
+                             // Update react-hook-form state
+                             onChange(e.target.files?.[0] ?? undefined);
+                          }}
+                          onBlur={onBlur}
+                          name={name}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Upload the finalized will document.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {/* Display general server action errors here if needed */}
+                {state && state.success === false && !state.error?.includes('{') && ( // Avoid showing JSON validation errors here
+                   <p className="text-sm font-medium text-destructive">{state.message}</p>
                 )}
-              />
-              {/* Display general server action errors here if needed */}
-              {state && state.success === false && !state.error?.includes('{') && ( // Avoid showing JSON validation errors here
-                 <p className="text-sm font-medium text-destructive">{state.message}</p>
-              )}
-              <SubmitButton /> {/* Use the dedicated submit button */}
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
+                <SubmitButton /> {/* Use the dedicated submit button */}
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Connect Your Wallet</CardTitle>
+            <CardDescription>
+              Please connect your Arweave wallet to upload your will document.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center">
+            <p className="text-muted-foreground mb-4 text-center">
+              You need to connect your wallet before you can upload documents to Arweave.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
