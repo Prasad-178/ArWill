@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useFormStatus } from "react-dom"; // Import hooks for server actions
 import { useActionState } from "react";
-import {ConnectButton, useActiveAddress, useApi} from '@arweave-wallet-kit/react';
+import {useApi} from '@arweave-wallet-kit/react';
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -27,6 +27,7 @@ import {
 import { useRef, useEffect, useState } from "react";
 import { uploadWillToArweave } from "./actions"; // Import the server action
 import { toast } from "sonner"; // Import toast from sonner
+import RequireWallet from '../components/RequireWallet';
 
 // Define the maximum file size (e.g., 5MB)
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -57,7 +58,6 @@ function SubmitButton() {
 
 export default function AddWillPage() {
   const [formKey, setFormKey] = useState(Date.now()); // Key to force form reset
-  const activeAddress = useActiveAddress();
   const api = useApi();
   
   // useFormState hook to manage server action state
@@ -121,12 +121,8 @@ export default function AddWillPage() {
   }, [api]);
 
   return (
-    <div className="flex flex-col justify-center items-center min-h-screen p-4 gap-6">
-      <div className="w-full max-w-md flex justify-center">
-        <ConnectButton />
-      </div>
-      
-      {activeAddress ? (
+    <RequireWallet>
+      <div className="flex flex-col justify-center items-center min-h-screen p-4 gap-6">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>Upload Will Document</CardTitle>
@@ -183,21 +179,7 @@ export default function AddWillPage() {
             </Form>
           </CardContent>
         </Card>
-      ) : (
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Connect Your Wallet</CardTitle>
-            <CardDescription>
-              Please connect your Arweave wallet to upload your will document.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center">
-            <p className="text-muted-foreground mb-4 text-center">
-              You need to connect your wallet before you can upload documents to Arweave.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+      </div>
+    </RequireWallet>
   );
 }
