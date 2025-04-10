@@ -3,7 +3,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ArweaveWalletKit } from "@arweave-wallet-kit/react";
-import ArConnectStrategy from "@arweave-wallet-kit/arconnect-strategy";
 import OthentStrategy from "@arweave-wallet-kit/othent-strategy";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -37,7 +36,6 @@ export default function RootLayout({
             ],
             ensurePermissions: true,
             strategies: [
-              new ArConnectStrategy(),
               new OthentStrategy(),
             ],
           }}
