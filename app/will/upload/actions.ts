@@ -23,6 +23,9 @@ const UploadWillSchema = z.object({
     .string()
     .email("Please enter a valid email address.")
     .min(1, "Guardian email is required."),
+  userWalletAddress: z
+    .string()
+    .min(1, "User wallet address is required."),
 });
 
 // Define the structure of the response from the action
@@ -156,6 +159,7 @@ export async function uploadWillToArweave(
   const validatedFields = UploadWillSchema.safeParse({
     willFile: formData.get("willFile"),
     guardianEmail: formData.get("guardianEmail"),
+    userWalletAddress: formData.get("userWalletAddress"),
   });
 
   if (!validatedFields.success) {
@@ -170,10 +174,11 @@ export async function uploadWillToArweave(
     };
   }
 
-  const { willFile, guardianEmail } = validatedFields.data;
+  const { willFile, guardianEmail, userWalletAddress } = validatedFields.data;
 
-  // Log the guardian email
+  // Log the guardian email and user address
   console.log("Guardian Email:", guardianEmail);
+  console.log("User Wallet Address:", userWalletAddress);
 
   // 2. Initialize Arweave
   const arweave = Arweave.init({
@@ -227,72 +232,61 @@ export async function uploadWillToArweave(
     const keyTxId = await uploadToArweave(encryptedSymmetricKey, "application/octet-stream", wallet, arweave);
     console.log(`Encrypted symmetric key uploaded with transaction ID: ${keyTxId}`);
 
-    // // 10. Retrieve and Decrypt Data (Verification Step)
-    // console.log("Retrieving and decrypting data for verification...");
-
-    // // Retrieve encrypted PDF from Arweave
-    // const encryptedPdfRetrieved = await arweave.transactions.getData(pdfTxId, { decode: true });
-    // console.log(`Retrieved encrypted PDF of size`);
-
-    // // Retrieve encrypted symmetric key from Arweave
-    // const encryptedSymmetricKeyRetrieved = await arweave.transactions.getData(keyTxId, { decode: true });
-    // console.log(`Retrieved encrypted symmetric key of size`);
-
-    // // Decrypt the PDF
-    // const decryptedPdf = decryptData(encryptedPdfRetrieved, encryptedSymmetricKeyRetrieved, privateKey);
-    // console.log(`Decrypted PDF size: ${decryptedPdf.byteLength} bytes`);
-
-    // // Optional: Save the decrypted PDF to verify correctness
-    // fs.writeFileSync('decrypted_document.pdf', decryptedPdf);
-    // console.log('Decryption complete. Decrypted file saved as "decrypted_document.pdf".');
-
     // 10. Store will information in database
     console.log("Storing will information in database...");
     try {
-      const res = await addWill(guardianEmail, pdfTxId, keyTxId, privateKey, wallet);
-      console.log("Will added successfully:", res);
+      const res = await addWill(guardianEmail, pdfTxId, keyTxId, privateKey, wallet, userWalletAddress);
+      console.log("Will added successfully via AO:", res);
     } catch (apiError) {
-        console.error("API request failed:", apiError);
+        console.error("Failed to add will via AO:", apiError);
         return {
           success: false,
-          message: "Failed to store will information in database.",
+          message: "Uploaded files to Arweave, but failed to store will information.",
           error: apiError instanceof Error ? apiError.message : String(apiError),
         };
     }
 
     return {
       success: true,
-      message: "Will uploaded and verified successfully!",
+      message: "Will uploaded and stored successfully!",
       transactionIds: {
         pdfTxId,
         keyTxId,
       },
     };
   } catch (error) {
-    console.error("Arweave upload failed:", error);
+    console.error("Arweave upload or processing failed:", error);
     return {
       success: false,
-      message: "Failed to upload will to Arweave.",
+      message: "Failed to process and upload will.",
       error: error instanceof Error ? error.message : String(error),
     };
   }
 }
 
-const addWill = async (guardianEmail: string, pdfTxId: string, keyTxId: string, privateKey: string, wallet: any) => {
-  console.log(guardianEmail, pdfTxId, keyTxId, privateKey, "0x");
+const addWill = async (guardianEmail: string, pdfTxId: string, keyTxId: string, privateKey: string, wallet: any, userWalletAddress: string) => {
+  console.log("Adding will with params:", { guardianEmail, pdfTxId, keyTxId, /* privateKey - avoid logging */ userWalletAddress });
   try {
-    const res = await message({
+    const messageId = await message({
       process: processId!,
-      tags: [...TAGS.CREATE_WILL, { name: "beneficiaries", value: guardianEmail }, { name: "pdfTxId", value: pdfTxId }, { name: "keyTxId", value: keyTxId }, { name: "pvtKey", value: privateKey }, { name: "userWalletAddress", value: "0x" }],
+      tags: [
+        ...TAGS.CREATE_WILL,
+        { name: "beneficiaries", value: guardianEmail },
+        { name: "pdfTxId", value: pdfTxId },
+        { name: "keyTxId", value: keyTxId },
+        { name: "pvtKey", value: privateKey },
+        { name: "userWalletAddress", value: userWalletAddress }
+      ],
       signer: createDataItemSigner(wallet),
       data: "",
-    })
+    });
 
-    const res1 = await result({ process: processId!, message: res });
-    console.log("Will added successfully:", res1);
-    return res1;
+    console.log("AO Message sent, ID:", messageId);
+
+    return { messageId };
+
   } catch (err) {
-    console.log("Failed to add will:", err);
-    return err;
+    console.error("Failed to send AO message:", err);
+    throw err;
   }
 }

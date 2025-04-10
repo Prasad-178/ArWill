@@ -28,6 +28,7 @@ import { useRef, useEffect, useState } from "react";
 import { uploadWillToArweave } from "./actions"; // Import the server action
 import { toast } from "sonner"; // Import toast from sonner
 import RequireWallet from '../components/RequireWallet';
+import { useActiveAddress } from "@arweave-wallet-kit/react";
 import { message, result, dryrun, createDataItemSigner } from "@permaweb/aoconnect";
 
 // Define the maximum file size (e.g., 5MB)
@@ -62,6 +63,7 @@ function SubmitButton() {
 }
 
 export default function AddWillPage() {
+  const activeAddress = useActiveAddress();
   const [formKey, setFormKey] = useState(Date.now()); // Key to force form reset
   const api = useApi();
   
@@ -85,7 +87,8 @@ export default function AddWillPage() {
     if (state) {
       if (state.success === true) {
         toast.success("Success!", {
-           description: `${state.message} Transaction ID: ${state.transactionIds}`,
+           // Display the success message and transaction IDs from the state
+           description: `${state.message} Transaction IDs: PDF: ${state.transactionIds?.pdfTxId}, Key: ${state.transactionIds?.keyTxId}`,
            duration: 5000, // Optional: duration in ms
         });
         // Reset the form visually by changing the key
@@ -94,14 +97,18 @@ export default function AddWillPage() {
         if (fileInputRef.current) {
           fileInputRef.current.value = ""; // Reset the actual file input element
         }
+      // If the action failed
       } else if (state.success === false) {
+        // Show an error toast
         toast.error("Upload Failed", {
+           // Display the error message and details from the state
            description: state.message + (state.error ? ` Error: ${state.error}` : ''),
            duration: 5000, // Optional: duration in ms
         });
       }
     }
-  }, [state, form]); // form added to dependency array
+    // This effect runs whenever the 'state' or 'form' object changes
+  }, [state, form]);
 
   // Client-side validation before calling server action
   const handleFormSubmit = async (data: z.infer<typeof formSchema>) => {
@@ -109,6 +116,15 @@ export default function AddWillPage() {
     const formData = new FormData();
     formData.append("willFile", data.willFile);
     formData.append("guardianEmail", data.guardianEmail);
+    // Add the activeAddress to the FormData
+    if (activeAddress) {
+      formData.append("userWalletAddress", activeAddress);
+    } else {
+      // Handle case where address is not available (optional, but good practice)
+      console.error("User wallet address not available.");
+      toast.error("Error", { description: "Wallet address not found. Please ensure your wallet is connected." });
+      return; // Prevent form submission if address is missing
+    }
 
     // Manually trigger the server action
     await formAction(formData);
