@@ -58,6 +58,43 @@ function SubmitButton({ isFileUploaded }: { isFileUploaded: boolean }) {
   );
 }
 
+// Helper function to trigger download from base64 data
+const downloadPdfFromBase64 = (base64Data: string, fileName: string) => {
+  try {
+    // Decode base64 string
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+
+    // Create a Blob
+    const blob = new Blob([byteArray], { type: "application/pdf" });
+
+    // Create an object URL
+    const url = URL.createObjectURL(blob);
+
+    // Create a temporary link element
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName; // Set the desired file name
+
+    // Append to the document, click, and remove
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Revoke the object URL to free up memory
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error("Failed to initiate download:", error);
+    toast.error("Download Failed", {
+      description: "Could not prepare the PDF file for download.",
+    });
+  }
+};
+
 export default function RetrieveWillPage() {
   const activeAddress = useActiveAddress();
   const api = useApi();
@@ -94,7 +131,7 @@ export default function RetrieveWillPage() {
     }
   }, [api]);
 
-  // Effect to show toast messages based on server action state
+  // Effect to show toast messages and handle download based on server action state
   useEffect(() => {
     if (state) {
       if (state.success === true) {
@@ -102,9 +139,19 @@ export default function RetrieveWillPage() {
           description: state.message,
           duration: 5000,
         });
+
+        // --- Trigger download if data is present ---
+        if (state.decryptedPdfData) {
+          downloadPdfFromBase64(state.decryptedPdfData, "will_document.pdf");
+        } else {
+          // Handle case where success is true but no data (e.g., maybe just confirmation)
+          console.log("Retrieval successful, but no PDF data returned.");
+        }
+        // --- End download logic ---
+
         // Reset the form visually by changing the key
         setFormKey(Date.now());
-        form.reset({ deathCertificate: undefined }); // Reset react-hook-form state
+        form.reset({ willOwnerEmail: "", deathCertificate: undefined }); // Reset react-hook-form state
         setIsFileUploaded(false); // Reset file upload state
         if (fileInputRef.current) {
           fileInputRef.current.value = ""; // Reset the actual file input element
@@ -117,7 +164,7 @@ export default function RetrieveWillPage() {
         });
       }
     }
-  }, [state, form]);
+  }, [state, form]); // Added form to dependency array as form.reset is used
 
   // Client-side validation before calling server action
   const handleFormSubmit = async (data: z.infer<typeof formSchema>) => {

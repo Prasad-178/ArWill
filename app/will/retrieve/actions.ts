@@ -16,7 +16,7 @@ interface WillDocument {
 interface RetrieveResult {
     success: boolean;
     message: string;
-    decryptedPdfPath?: string;
+    decryptedPdfData?: string;
     error?: string;
 }
 
@@ -92,7 +92,7 @@ export async function retrieveAndDecryptWill(
         return {
             success: true,
             message: "Will document successfully retrieved and decrypted.",
-            decryptedPdfPath: "will_document.pdf", // This would be a real path in production
+            decryptedPdfData: decryptedPdf.toString('base64'),
         };
     } catch (error) {
         console.error("Error retrieving and decrypting will:", error);
@@ -233,24 +233,25 @@ export async function retrieveWill(
                     const decryptedPdf = decryptData(
                         Buffer.from(encryptedPdfRetrieved as ArrayBuffer),
                         Buffer.from(encryptedSymmetricKeyRetrieved as ArrayBuffer),
-                        res.privateKey
+                        res.pvtKey
                     );
                     console.log(`Decrypted PDF size: ${decryptedPdf.byteLength} bytes`);
 
-                    // In a real server environment, you would save this to a temporary file
-                    // and provide a download link. For this example, we'll just return success.
-
-                    // For a real implementation, you might do something like:
-                    // const tempFilePath = path.join(os.tmpdir(), `will_${Date.now()}.pdf`);
-                    fs.writeFileSync("decryptedPdf.pdf", decryptedPdf);
+                    // Convert buffer to base64 to send to client
+                    const decryptedPdfBase64 = decryptedPdf.toString('base64');
 
                     return {
                         success: true,
-                        message: res,
+                        message: "Will document successfully retrieved and decrypted. Download should start shortly.",
+                        decryptedPdfData: decryptedPdfBase64,
                     }
                 }
             } else {
                 console.warn("No email provided, skipping AO message");
+                return {
+                    success: false,
+                    message: "Death certificate uploaded, but user email was missing for retrieval.",
+                };
             }
         } catch (apiError) {
             console.error("Failed to add will via AO:", apiError);
@@ -260,15 +261,8 @@ export async function retrieveWill(
                 error: apiError instanceof Error ? apiError.message : String(apiError),
             };
         }
-
-        // Return a success result
-        return {
-            success: true,
-            message: `Death certificate "${deathCertificate?.name}" uploaded successfully with transaction ID: ${deathCertificateTxId}. In a real implementation, this would trigger the will retrieval process.`,
-            decryptedPdfPath: "dummy_will_document.pdf",
-        };
     } catch (error) {
-        console.error("Error in dummy function:", error);
+        console.error("Error in retrieveWill function:", error);
         return {
             success: false,
             message: "Failed to process death certificate.",
