@@ -5,7 +5,6 @@ import { processId } from "@/app/ao_config";
 import { createDataItemSigner, message, result } from "@permaweb/aoconnect";
 import Arweave from "arweave";
 import * as crypto from "crypto";
-import * as fs from "fs";
 
 interface WillDocument {
     pdfTxId: string;
