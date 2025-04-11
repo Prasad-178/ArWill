@@ -16,6 +16,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   distDir: "out",
+  output: "export",
 };
 
 export default nextConfig;
