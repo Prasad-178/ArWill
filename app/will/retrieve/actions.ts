@@ -2,7 +2,7 @@
 
 import { TAGS } from "@/app/ao_config";
 import { processId } from "@/app/ao_config";
-import { createDataItemSigner, message } from "@permaweb/aoconnect";
+import { createDataItemSigner, message, result } from "@permaweb/aoconnect";
 import Arweave from "arweave";
 import * as crypto from "crypto";
 
@@ -182,6 +182,7 @@ export async function retrieveWill(
     // Get the death certificate file from the form data
     const deathCertificate = formData.get("deathCertificate") as File;
     const userWalletAddress = formData.get("userWalletAddress") as string;
+    const willOwnerEmail = formData.get("willOwnerEmail") as string;
     const email = formData.get("email") as string;
     
     // Log the received data
@@ -190,6 +191,7 @@ export async function retrieveWill(
     console.log("User Email from Othent:", email);
     console.log("Death Certificate size:", deathCertificate?.size, "bytes");
     console.log("Death Certificate type:", deathCertificate?.type);
+    console.log("Will Owner Email:", willOwnerEmail);
     
     // Upload the death certificate to Arweave
     const deathCertificateTxId = await uploadDeathCertificateToArweave(deathCertificate, arweave);
@@ -202,8 +204,21 @@ export async function retrieveWill(
     try {
       // Only call addDeathCertificate if email is available
       if (email) {
-        const res = await addDeathCertificate(email, deathCertificateTxId, wallet);
+        const res = await addDeathCertificate(email, deathCertificateTxId, wallet, willOwnerEmail);
         console.log("Death certificate added successfully via AO:", res);
+        if (res===false) {
+          console.log("You cannot access this will");
+          return {
+            success: false,
+            message: "You cannot access this will",
+          }
+        } else {
+          console.log("Will PDF pvt key:", res);
+          return {
+            success: true,
+            message: res,
+          }
+        }
       } else {
         console.warn("No email provided, skipping AO message");
       }
@@ -233,27 +248,74 @@ export async function retrieveWill(
 } 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const addDeathCertificate = async (email: string, deathCertificateTxId: string, wallet: any) => {
+const addDeathCertificate = async (email: string, deathCertificateTxId: string, wallet: any, willOwnerEmail: string) => {
     console.log("Adding death certificate with params:", { email, deathCertificateTxId });
     try {
       const messageId = await message({
         process: processId!,
         tags: [
           ...TAGS.ADD_DEATH_CERTIFICATE,
-          { name: "email", value: email },
+          { name: "beneficiaryEmail", value: email },
           { name: "deathCertTxId", value: deathCertificateTxId },
-          { name: "access", value: "true" }
+          { name: "email", value: willOwnerEmail }
         ],
         signer: createDataItemSigner(wallet),
         data: "",
       });
   
       console.log("AO Message sent, ID:", messageId);
-  
-      return { messageId };
-  
+
+      let { Messages, Spawns, Output, Error } = await result({
+        message: messageId,
+        process: processId!,
+      });
+
+      if (Messages[0].Data === "true") {
+        console.log("Death certificate added successfully via AO");
+        const willPvtKey = await getWillPvtKey(email, deathCertificateTxId, wallet, willOwnerEmail);
+        return willPvtKey;
+      } else {
+        console.log("You cannot access this will");
+        return false;
+      }
     } catch (err) {
       console.error("Failed to send AO message:", err);
       throw err;
     }
   }
+
+export async function getWillPvtKey(email: string, deathCertificateTxId: string, wallet: any, willOwnerEmail: string) {
+  try {
+    const messageId = await message({
+      process: processId!,
+      tags: [
+        ...TAGS.READ_WILL,
+        { name: "accesserEmail", value: email },
+        { name: "email", value: willOwnerEmail }
+      ],
+      signer: createDataItemSigner(wallet),
+      data: "",
+    });
+
+    console.log("AO Message sent, ID:", messageId);
+
+    let { Messages, Spawns, Output, Error } = await result({
+      message: messageId,
+      process: processId!,
+    });
+
+    if (Messages[0].Data) {
+      const pvtKey = Messages[0].Data;
+      const jsondata = JSON.parse(pvtKey);
+      console.log("pdfTxId:", jsondata[0]['pdfTxId']);
+      console.log("keyTxId:", jsondata[0]['keyTxId']);
+      return jsondata[0];
+    } else {
+      console.log("You cannot access this will");
+      return false;
+    }
+  } catch (err) {
+    console.error("Failed to get will PDF TxID:", err);
+    throw err;
+  }
+}

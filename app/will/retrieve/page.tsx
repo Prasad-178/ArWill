@@ -35,6 +35,9 @@ const ACCEPTED_FILE_TYPES = ["application/pdf"];
 
 // Define the form schema using Zod (client-side validation)
 const formSchema = z.object({
+  willOwnerEmail: z
+    .string({ required_error: "Will owner's email is required." })
+    .email("Please enter a valid email address."),
   deathCertificate: z
     .instanceof(File, { message: "File is required." })
     .refine((file) => file?.size > 0, "File cannot be empty.")
@@ -70,6 +73,7 @@ export default function RetrieveWillPage() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      willOwnerEmail: "",
       deathCertificate: undefined,
     },
   });
@@ -120,6 +124,7 @@ export default function RetrieveWillPage() {
     // Create FormData to send to the server action
     const formData = new FormData();
     formData.append("deathCertificate", data.deathCertificate);
+    formData.append("willOwnerEmail", data.willOwnerEmail);
     
     // Add the activeAddress to the FormData
     if (activeAddress) {
@@ -159,6 +164,26 @@ export default function RetrieveWillPage() {
                 onSubmit={form.handleSubmit(handleFormSubmit)}
                 className="space-y-8"
               >
+                <FormField
+                  control={form.control}
+                  name="willOwnerEmail"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email of Will Owner</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="owner@example.com"
+                          type="email"
+                          {...field}
+                         />
+                      </FormControl>
+                      <FormDescription>
+                        Enter the email address associated with the will you are trying to retrieve.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <FormField
                   control={form.control}
                   name="deathCertificate"
