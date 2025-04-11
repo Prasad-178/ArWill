@@ -55,9 +55,9 @@ export async function retrieveAndDecryptWill(
     try {
         // Initialize Arweave
         const arweave = Arweave.init({
-            host: process.env.ARWEAVE_HOST || "localhost",
-            port: process.env.ARWEAVE_PORT || 1984,
-            protocol: process.env.ARWEAVE_PROTOCOL || "http",
+            host: "arweave.net",
+            port: 443,
+            protocol: "https",
             timeout: 20000,
             logging: false,
         });
@@ -172,9 +172,9 @@ export async function retrieveWill(
 ): Promise<RetrieveResult> {
     try {
         const arweave = Arweave.init({
-            host: process.env.ARWEAVE_HOST || "localhost",
-            port: process.env.ARWEAVE_PORT || 1984,
-            protocol: process.env.ARWEAVE_PROTOCOL || "http",
+            host: "arweave.net",
+            port: 443,
+            protocol: "https",
             timeout: 20000,
             logging: false,
         });
