@@ -1,8 +1,21 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { useActiveAddress, useApi } from '@arweave-wallet-kit/react';
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
+import { useFormStatus } from "react-dom";
+import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -10,40 +23,66 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useRef, useEffect, useState } from "react";
+import { retrieveWill } from "./actions"; // Import the dummy function
+import { toast } from "sonner";
 import RequireWallet from '../components/RequireWallet';
-import { toast } from 'sonner';
-import { TAGS } from '@/app/ao_config';
-import { retrieveAndDecryptWill } from './actions';
+import { useActiveAddress, useApi } from "@arweave-wallet-kit/react";
 
-interface WillDocument {
-  pdfTxId: string;
-  keyTxId: string;
-  privateKey: string;
-  uploadDate?: string;
-  guardianEmail?: string;
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+const ACCEPTED_FILE_TYPES = ["application/pdf"];
+
+// Define the form schema using Zod (client-side validation)
+const formSchema = z.object({
+  deathCertificate: z
+    .instanceof(File, { message: "File is required." })
+    .refine((file) => file?.size > 0, "File cannot be empty.")
+    .refine((file) => file?.size <= MAX_FILE_SIZE, `Max file size is 5MB.`)
+    .refine(
+      (file) => ACCEPTED_FILE_TYPES.includes(file?.type),
+      "Only .pdf files are accepted."
+    ),
+});
+
+// Separate component for the submit button to use useFormStatus
+function SubmitButton({ isFileUploaded }: { isFileUploaded: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" className="w-full" disabled={pending || !isFileUploaded}>
+      {pending ? "Retrieving..." : "Retrieve Will"}
+    </Button>
+  );
 }
 
 export default function RetrieveWillPage() {
-  const [loading, setLoading] = useState(false);
-  const [decrypting, setDecrypting] = useState(false);
-  const [willDocument, setWillDocument] = useState<WillDocument | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
   const activeAddress = useActiveAddress();
   const api = useApi();
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [formKey, setFormKey] = useState(Date.now()); // Key to force form reset
+  const [isFileUploaded, setIsFileUploaded] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [othentDetails, setOthentDetails] = useState<any>(null);
+  
+  // useActionState hook to manage server action state
+  const [state, formAction] = useActionState(retrieveWill, null);
 
-  // Get user email from Othent
+  // Define your form (primarily for client-side validation)
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      deathCertificate: undefined,
+    },
+  });
+
+  // Ref for the file input to reset it
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch Othent details when the component mounts
   useEffect(() => {
     const getOthentDetails = async () => {
-      try {
-        const details = await api?.othent?.getUserDetails();
-        console.log('Othent user details:', details);
-        if (details?.email) {
-          setUserEmail(details.email);
-        }
-      } catch (error) {
-        console.error('Error getting Othent user details:', error);
-      }
+      const details = await api?.othent?.getUserDetails();
+      setOthentDetails(details);
+      console.log('Othent details:', details);
     };
     
     if (api?.othent) {
@@ -51,120 +90,56 @@ export default function RetrieveWillPage() {
     }
   }, [api]);
 
-  const retrieveWill = async () => {
-    if (!activeAddress) {
-      toast.error("Wallet not connected", {
-        description: "Please connect your wallet to retrieve your will documents.",
-      });
-      return;
-    }
-
-    if (!userEmail) {
-      toast.error("Email not available", {
-        description: "We couldn't retrieve your email from your wallet. Please try again.",
-      });
-      return;
-    }
-
-    setLoading(true);
-    setHasSearched(true);
-    
-    try {
-      // In a real implementation, this would be an actual API call
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api.example.com/retrieve-will";
-      
-      // Make the API call with the user's email
-      const response = await fetch(`${apiUrl}?email=${encodeURIComponent(userEmail)}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_API_KEY || "dummy-api-key"}`
+  // Effect to show toast messages based on server action state
+  useEffect(() => {
+    if (state) {
+      if (state.success === true) {
+        toast.success("Success!", {
+          description: state.message,
+          duration: 5000,
+        });
+        // Reset the form visually by changing the key
+        setFormKey(Date.now());
+        form.reset({ deathCertificate: undefined }); // Reset react-hook-form state
+        setIsFileUploaded(false); // Reset file upload state
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ""; // Reset the actual file input element
         }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`API request failed with status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      // For demo purposes, we'll simulate the API response
-      if (!data || Object.keys(data).length === 0) {
-        setWillDocument(null);
-        toast.info("No will document found", {
-          description: "We couldn't find any will document associated with your email address.",
-        });
-      } else {
-        // Set the will document from the API response
-        setWillDocument(data);
-        toast.success("Will document found", {
-          description: "Your will document has been retrieved successfully.",
+      } else if (state.success === false) {
+        // Show an error toast
+        toast.error("Retrieval Failed", {
+          description: state.message + (state.error ? ` Error: ${state.error}` : ''),
+          duration: 5000,
         });
       }
-    } catch (error) {
-      console.error("Error retrieving will:", error);
-      toast.error("Retrieval failed", {
-        description: "There was an error retrieving your will document. Please try again.",
-      });
-      setWillDocument(null);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [state, form]);
 
-  const decryptAndDownload = async () => {
-    if (!willDocument) return;
+  // Client-side validation before calling server action
+  const handleFormSubmit = async (data: z.infer<typeof formSchema>) => {
+    // Create FormData to send to the server action
+    const formData = new FormData();
+    formData.append("deathCertificate", data.deathCertificate);
     
-    setDecrypting(true);
-    toast.info("Processing", {
-      description: "Retrieving and decrypting your will document...",
-    });
-    
-    try {
-      // Call the server action to retrieve and decrypt the will
-      const result = await retrieveAndDecryptWill(willDocument);
-      
-      if (result.success) {
-        toast.success("Decryption successful", {
-          description: "Your will document has been decrypted successfully.",
-        });
-        
-        // In a real application, you would provide a download link here
-        // For now, we'll simulate a download by creating a blob and downloading it
-        
-        // This is a client-side simulation of downloading a PDF
-        // In a real app, you would get the actual PDF data from the server
-        const dummyPdfContent = "This is a simulated PDF document";
-        const blob = new Blob([dummyPdfContent], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'will_document.pdf';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      } else {
-        toast.error("Decryption failed", {
-          description: result.message,
-        });
-      }
-    } catch (error) {
-      console.error("Error decrypting will:", error);
-      toast.error("Decryption failed", {
-        description: "There was an error decrypting your will document. Please try again.",
-      });
-    } finally {
-      setDecrypting(false);
+    // Add the activeAddress to the FormData
+    if (activeAddress) {
+      formData.append("userWalletAddress", activeAddress);
+    } else {
+      console.error("User wallet address not available.");
+      toast.error("Error", { description: "Wallet address not found. Please ensure your wallet is connected." });
+      return; // Prevent form submission if address is missing
     }
-  };
 
-  const viewDocument = (txId: string) => {
-    // In a real implementation, this would redirect to a document viewer or download the document
-    toast.info("Viewing document", {
-      description: `Accessing document with transaction ID: ${txId}`,
-    });
-    window.open(`https://arweave.net/${txId}`, '_blank');
+    // Add Othent email to the FormData if available
+    if (othentDetails?.email) {
+      formData.append("email", othentDetails.email);
+      console.log("Adding email to form data:", othentDetails.email);
+    } else {
+      console.log("No Othent email available");
+    }
+
+    // Manually trigger the server action
+    await formAction(formData);
   };
 
   return (
@@ -172,68 +147,53 @@ export default function RetrieveWillPage() {
       <div className="flex flex-col justify-center items-center min-h-screen p-4 gap-6">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Retrieve Your Will</CardTitle>
+            <CardTitle>Retrieve Will Document</CardTitle>
             <CardDescription>
-              Click the button below to search for a will document associated with your email address: {userEmail || "Loading..."}
+              Please upload a death certificate in PDF format to retrieve the will document.
+              Ensure it does not exceed 5MB.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Button 
-              onClick={retrieveWill} 
-              disabled={loading || !userEmail}
-              className="w-full"
-            >
-              {loading ? "Searching..." : "Retrieve My Will"}
-            </Button>
-
-            {hasSearched && !loading && (
-              <div className="mt-4">
-                {willDocument ? (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Your Will Document</h3>
-                    <Card className="p-4">
-                      <div className="flex flex-col gap-2">
-                        <p className="text-sm"><strong>PDF Transaction ID:</strong> {willDocument.pdfTxId}</p>
-                        <p className="text-sm"><strong>Key Transaction ID:</strong> {willDocument.keyTxId}</p>
-                        <p className="text-sm"><strong>Private Key:</strong> <span className="font-mono text-xs break-all">{willDocument.privateKey.substring(0, 40)}...</span></p>
-                        <div className="flex flex-col sm:flex-row gap-2 mt-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => viewDocument(willDocument.pdfTxId)}
-                            className="flex-1"
-                          >
-                            View Encrypted Document
-                          </Button>
-                          <Button 
-                            variant="secondary" 
-                            size="sm" 
-                            onClick={() => {
-                              navigator.clipboard.writeText(willDocument.privateKey);
-                              toast.success("Private key copied to clipboard");
-                            }}
-                            className="flex-1"
-                          >
-                            Copy Private Key
-                          </Button>
-                        </div>
-                        <Button 
-                          onClick={decryptAndDownload}
-                          disabled={decrypting}
-                          className="w-full mt-2"
-                        >
-                          {decrypting ? "Decrypting..." : "Decrypt & Download Will"}
-                        </Button>
-                      </div>
-                    </Card>
-                  </div>
-                ) : (
-                  <div className="text-center p-4 border rounded-md">
-                    <p className="text-muted-foreground">No will document found for your email address.</p>
-                  </div>
+          <CardContent>
+            <Form {...form} key={formKey}>
+              <form
+                onSubmit={form.handleSubmit(handleFormSubmit)}
+                className="space-y-8"
+              >
+                <FormField
+                  control={form.control}
+                  name="deathCertificate"
+                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                  render={({ field: { onChange, value, onBlur, name, ref: rhfRef } }) => (
+                    <FormItem>
+                      <FormLabel>Death Certificate (PDF only)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="file"
+                          accept=".pdf"
+                          ref={fileInputRef}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] ?? undefined;
+                            onChange(file);
+                            setIsFileUploaded(!!file); // Update file upload state
+                          }}
+                          onBlur={onBlur}
+                          name={name}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Upload the death certificate to verify your access to the will.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {/* Display general server action errors here if needed */}
+                {state && state.success === false && !state.error?.includes('{') && (
+                  <p className="text-sm font-medium text-destructive">{state.message}</p>
                 )}
-              </div>
-            )}
+                <SubmitButton isFileUploaded={isFileUploaded} />
+              </form>
+            </Form>
           </CardContent>
         </Card>
       </div>

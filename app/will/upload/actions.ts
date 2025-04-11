@@ -3,7 +3,7 @@
 import Arweave from "arweave";
 import { z } from "zod";
 import * as crypto from "crypto";
-import { message, result, dryrun, createDataItemSigner } from "@permaweb/aoconnect";
+import { message, createDataItemSigner } from "@permaweb/aoconnect";
 import { processId, TAGS } from "../../ao_config";
 
 // Define the input schema for the action using Zod
@@ -26,6 +26,10 @@ const UploadWillSchema = z.object({
   userWalletAddress: z
     .string()
     .min(1, "User wallet address is required."),
+  userEmail: z
+    .string()
+    .email("Please enter a valid email address.")
+    .optional(), // Make it optional since it might not always be available
 });
 
 // Define the structure of the response from the action
@@ -96,38 +100,6 @@ function encryptData(
   return { encryptedData: combinedEncryptedData, encryptedSymmetricKey };
 }
 
-// Function to decrypt data using ChaCha20-Poly1305
-function decryptData(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  encryptedData: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  encryptedSymmetricKey: any,
-  privateKey: string
-): Buffer {
-  // Decrypt the symmetric key with the RSA private key
-  const symmetricKey = crypto.privateDecrypt(
-    {
-      key: privateKey,
-      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-    },
-    encryptedSymmetricKey
-  );
-
-  // Extract the nonce, authTag, and encrypted data
-  const nonce = encryptedData.slice(0, 12);
-  const authTag = encryptedData.slice(12, 28);
-  const ciphertext = encryptedData.slice(28);
-
-  // Create the decipher instance
-  const decipher = crypto.createDecipheriv("chacha20-poly1305", symmetricKey, nonce);
-  decipher.setAuthTag(authTag);
-
-  // Decrypt the data
-  const decryptedData = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-
-  return decryptedData;
-}
-
 // Function to upload data to Arweave
 async function uploadToArweave(
   data: Buffer,
@@ -160,6 +132,7 @@ export async function uploadWillToArweave(
     willFile: formData.get("willFile"),
     guardianEmail: formData.get("guardianEmail"),
     userWalletAddress: formData.get("userWalletAddress"),
+    userEmail: formData.get("userEmail"), // Get userEmail from FormData
   });
 
   if (!validatedFields.success) {
@@ -174,11 +147,12 @@ export async function uploadWillToArweave(
     };
   }
 
-  const { willFile, guardianEmail, userWalletAddress } = validatedFields.data;
+  const { willFile, guardianEmail, userWalletAddress, userEmail } = validatedFields.data;
 
-  // Log the guardian email and user address
+  // Log the guardian email, user address, and user email
   console.log("Guardian Email:", guardianEmail);
   console.log("User Wallet Address:", userWalletAddress);
+  console.log("User Email:", userEmail);
 
   // 2. Initialize Arweave
   const arweave = Arweave.init({
@@ -235,7 +209,15 @@ export async function uploadWillToArweave(
     // 10. Store will information in database
     console.log("Storing will information in database...");
     try {
-      const res = await addWill(guardianEmail, pdfTxId, keyTxId, privateKey, wallet, userWalletAddress);
+      const res = await addWill(
+        guardianEmail, 
+        pdfTxId, 
+        keyTxId, 
+        privateKey, 
+        wallet, 
+        userWalletAddress, 
+        userEmail || "" // Pass the user email to addWill, use empty string as fallback
+      );
       console.log("Will added successfully via AO:", res);
     } catch (apiError) {
         console.error("Failed to add will via AO:", apiError);
@@ -264,8 +246,18 @@ export async function uploadWillToArweave(
   }
 }
 
-const addWill = async (guardianEmail: string, pdfTxId: string, keyTxId: string, privateKey: string, wallet: any, userWalletAddress: string) => {
-  console.log("Adding will with params:", { guardianEmail, pdfTxId, keyTxId, /* privateKey - avoid logging */ userWalletAddress });
+// Update the addWill function to accept userEmail
+const addWill = async (
+  guardianEmail: string, 
+  pdfTxId: string, 
+  keyTxId: string, 
+  privateKey: string, 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  wallet: any, 
+  userWalletAddress: string, 
+  userEmail: string
+) => {
+  console.log("Adding will with params:", { guardianEmail, pdfTxId, keyTxId, privateKey, userWalletAddress, userEmail });
   try {
     const messageId = await message({
       process: processId!,
@@ -275,7 +267,8 @@ const addWill = async (guardianEmail: string, pdfTxId: string, keyTxId: string, 
         { name: "pdfTxId", value: pdfTxId },
         { name: "keyTxId", value: keyTxId },
         { name: "pvtKey", value: privateKey },
-        { name: "userWalletAddress", value: userWalletAddress }
+        { name: "userWalletAddress", value: userWalletAddress },
+        { name: "email", value: userEmail } // Use userEmail in the tags
       ],
       signer: createDataItemSigner(wallet),
       data: "",

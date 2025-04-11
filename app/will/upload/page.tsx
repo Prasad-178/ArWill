@@ -29,7 +29,6 @@ import { uploadWillToArweave } from "./actions"; // Import the server action
 import { toast } from "sonner"; // Import toast from sonner
 import RequireWallet from '../components/RequireWallet';
 import { useActiveAddress } from "@arweave-wallet-kit/react";
-import { message, result, dryrun, createDataItemSigner } from "@permaweb/aoconnect";
 
 // Define the maximum file size (e.g., 5MB)
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -116,6 +115,7 @@ export default function AddWillPage() {
     const formData = new FormData();
     formData.append("willFile", data.willFile);
     formData.append("guardianEmail", data.guardianEmail);
+    
     // Add the activeAddress to the FormData
     if (activeAddress) {
       formData.append("userWalletAddress", activeAddress);
@@ -124,6 +124,15 @@ export default function AddWillPage() {
       console.error("User wallet address not available.");
       toast.error("Error", { description: "Wallet address not found. Please ensure your wallet is connected." });
       return; // Prevent form submission if address is missing
+    }
+    
+    // Add user email from Othent if available
+    if (othentDetails?.email) {
+      formData.append("userEmail", othentDetails.email);
+    } else {
+      console.warn("User email not available from Othent.");
+      // You can decide if you want to block submission or just warn
+      // toast.warning("Warning", { description: "Your email address couldn't be retrieved. Some features may be limited." });
     }
 
     // Manually trigger the server action
@@ -198,11 +207,11 @@ export default function AddWillPage() {
                   name="guardianEmail"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Guardian Email</FormLabel>
+                      <FormLabel>Beneficiary Email</FormLabel>
                       <FormControl>
                         <Input
                           type="email"
-                          placeholder="guardian@example.com"
+                          placeholder="beneficiary@example.com"
                           {...field}
                         />
                       </FormControl>
