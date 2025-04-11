@@ -5,6 +5,7 @@ import "./globals.css";
 import { ArweaveWalletKit } from "@arweave-wallet-kit/react";
 import OthentStrategy from "@arweave-wallet-kit/othent-strategy";
 import { Toaster } from "@/components/ui/sonner";
+import Navbar from "@/app/components/Navbar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,7 +25,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}
       >
         <ArweaveWalletKit
           config={{
@@ -40,7 +41,8 @@ export default function RootLayout({
             ],
           }}
         >
-          {children}
+          <Navbar />
+          <main className="flex-grow">{children}</main>
         </ArweaveWalletKit>
         <Toaster richColors />
       </body>

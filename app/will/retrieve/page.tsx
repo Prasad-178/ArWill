@@ -28,6 +28,7 @@ import { retrieveWill } from "./actions"; // Import the dummy function
 import { toast } from "sonner";
 import RequireWallet from '../components/RequireWallet';
 import { useActiveAddress, useApi } from "@arweave-wallet-kit/react";
+import Image from "next/image"; // Import Next.js Image
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -196,78 +197,91 @@ export default function RetrieveWillPage() {
 
   return (
     <RequireWallet>
-      <div className="flex flex-col justify-center items-center min-h-screen p-4 gap-6">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Retrieve Will Document</CardTitle>
-            <CardDescription>
-              Please upload a death certificate in PDF format to retrieve the will document.
-              Ensure it does not exceed 5MB.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form} key={formKey}>
-              <form
-                onSubmit={form.handleSubmit(handleFormSubmit)}
-                className="space-y-8"
-              >
-                <FormField
-                  control={form.control}
-                  name="willOwnerEmail"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email of Will Owner</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="owner@example.com"
-                          type="email"
-                          {...field}
-                         />
-                      </FormControl>
-                      <FormDescription>
-                        Enter the email address associated with the will you are trying to retrieve.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="deathCertificate"
-                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                  render={({ field: { onChange, value, onBlur, name, ref: rhfRef } }) => (
-                    <FormItem>
-                      <FormLabel>Death Certificate (PDF only)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="file"
-                          accept=".pdf"
-                          ref={fileInputRef}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0] ?? undefined;
-                            onChange(file);
-                            setIsFileUploaded(!!file); // Update file upload state
-                          }}
-                          onBlur={onBlur}
-                          name={name}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        Upload the death certificate to verify your access to the will.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {/* Display general server action errors here if needed */}
-                {state && state.success === false && !state.error?.includes('{') && (
-                  <p className="text-sm font-medium text-destructive">{state.message}</p>
-                )}
-                <SubmitButton isFileUploaded={isFileUploaded} />
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
+      <div className="flex flex-1 items-center justify-center p-4 py-2 lg:p-6">
+        <div className="flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-16 w-full max-w-6xl">
+          <div className="w-full max-w-md lg:w-1/2 flex justify-center items-center order-last lg:order-first">
+            <Image
+              src="/key.jpg"
+              alt="Key unlocking a lock, symbolizing access"
+              width={500}
+              height={500}
+              priority
+              className="object-contain rounded-lg shadow-md w-full h-auto max-h-[400px]"
+            />
+          </div>
+          <div className="w-full max-w-md lg:w-1/2 flex justify-center">
+            <Card className="w-full shadow-lg">
+              <CardHeader>
+                <CardTitle>Retrieve a Digital Will</CardTitle>
+                <CardDescription className="italic pt-1">
+                  "Patience and perseverance have a magical effect before which difficulties disappear and obstacles vanish." - Accessing the secured legacy.
+                  <br />
+                  <span className="not-italic text-xs text-muted-foreground block pt-2">
+                    Requires owner's email and death certificate (PDF, max 5MB).
+                  </span>
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Form {...form} key={formKey}>
+                  <form
+                    onSubmit={form.handleSubmit(handleFormSubmit)}
+                    className="space-y-6"
+                  >
+                    <FormField
+                      control={form.control}
+                      name="willOwnerEmail"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Will Owner's Email</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="email"
+                              placeholder="owner@example.com"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="deathCertificate"
+                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                      render={({ field: { onChange, value, onBlur, name, ref: rhfRef } }) => (
+                        <FormItem>
+                          <FormLabel>Death Certificate (PDF only)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="file"
+                              accept=".pdf"
+                              ref={fileInputRef}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                onChange(file ?? undefined);
+                                setIsFileUploaded(!!file); // Update state directly
+                              }}
+                              onBlur={onBlur}
+                              name={name}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Upload the official document (max 5MB).
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {state && state.success === false && !state.error?.includes('{') && (
+                      <p className="text-sm font-medium text-destructive">{state.message}</p>
+                    )}
+                    <SubmitButton isFileUploaded={isFileUploaded} />
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     </RequireWallet>
   );

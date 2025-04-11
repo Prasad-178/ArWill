@@ -29,6 +29,7 @@ import { uploadWillToArweave } from "./actions"; // Import the server action
 import { toast } from "sonner"; // Import toast from sonner
 import RequireWallet from '../components/RequireWallet';
 import { useActiveAddress } from "@arweave-wallet-kit/react";
+import Image from "next/image"; // Import the Next.js Image component
 
 // Define the maximum file size (e.g., 5MB)
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -154,83 +155,105 @@ export default function AddWillPage() {
 
   return (
     <RequireWallet>
-      <div className="flex flex-col justify-center items-center min-h-screen p-4 gap-6">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Upload Will Document</CardTitle>
-            <CardDescription>
-              Please upload the will document in PDF format. Ensure it does not
-              exceed 5MB.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Use the key to allow resetting */}
-            <Form {...form} key={formKey}>
-              {/*
-                We use form.handleSubmit for client-side validation,
-                which then calls our handleFormSubmit function.
-                handleFormSubmit creates FormData and calls the server action.
-              */}
-              <form
-                onSubmit={form.handleSubmit(handleFormSubmit)}
-                className="space-y-8"
-              >
-                <FormField
-                  control={form.control}
-                  name="willFile"
-                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                  render={({ field: { onChange, value, onBlur, name, ref: rhfRef } }) => ( // Use rhfRef to avoid conflict
-                    <FormItem>
-                      <FormLabel>Will Document (PDF only)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="file"
-                          accept=".pdf"
-                          ref={fileInputRef} // Assign the ref here
-                          onChange={(e) => {
-                             // Update react-hook-form state
-                             onChange(e.target.files?.[0] ?? undefined);
-                          }}
-                          onBlur={onBlur}
-                          name={name}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        Upload the finalized will document.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="guardianEmail"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Beneficiary Email</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="email"
-                          placeholder="beneficiary@example.com"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        Email of the person who should have access to your will.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {/* Display general server action errors here if needed */}
-                {state && state.success === false && !state.error?.includes('{') && ( // Avoid showing JSON validation errors here
-                   <p className="text-sm font-medium text-destructive">{state.message}</p>
-                )}
-                <SubmitButton /> {/* Use the dedicated submit button */}
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
+      {/* Slightly reduce vertical padding */}
+      <div className="flex flex-1 items-center justify-center p-4 py-2 lg:p-6"> {/* Adjusted padding */}
+        {/* Inner container for the two columns */}
+        <div className="flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-16 w-full max-w-6xl">
+
+          {/* Left Column: Form Card */}
+          <div className="w-full max-w-md lg:w-1/2 flex justify-center">
+            <Card className="w-full">
+              <CardHeader>
+                <CardTitle>Upload Will Document</CardTitle>
+                <CardDescription>
+                  Please upload the will document in PDF format. Ensure it does not
+                  exceed 10MB.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Form {...form} key={formKey}>
+                  <form
+                    onSubmit={form.handleSubmit(handleFormSubmit)}
+                    className="space-y-8"
+                  >
+                    <FormField
+                      control={form.control}
+                      name="willFile"
+                      render={({ field: { onChange, value, onBlur, name, ref: rhfRef } }) => (
+                        <FormItem>
+                          <FormLabel>Will Document (PDF only)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="file"
+                              accept=".pdf"
+                              ref={fileInputRef}
+                              onChange={(e) => {
+                                onChange(e.target.files?.[0] ?? undefined);
+                              }}
+                              onBlur={onBlur}
+                              name={name}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Upload the finalized will document.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="guardianEmail"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Beneficiary Email</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="email"
+                              placeholder="beneficiary@example.com"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Email of the person who should have access to your will.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {state && state.success === false && !state.error?.includes('{') && (
+                      <p className="text-sm font-medium text-destructive">{state.message}</p>
+                    )}
+                    <SubmitButton />
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Column: Image with Text Overlay */}
+          <div className="w-full max-w-md lg:w-1/2 flex justify-center items-center mt-8 lg:mt-0">
+            <div className="relative w-full h-auto max-w-[500px]">
+              <Image
+                src="/vault.jpg"
+                alt="Vault representing secure will storage"
+                width={1000}
+                height={1000}
+                priority
+                className="object-contain w-full h-full rounded-md"
+              />
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 p-4 text-center rounded-md">
+                <p className="text-white text-2xl md:text-3xl lg:text-4xl font-bold mb-2">
+                  Your Legacy, Secured Forever.
+                </p>
+                <p className="text-white text-sm md:text-base font-light">
+                  Create smart wills with trustless access, encrypted
+                </p>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
     </RequireWallet>
   );

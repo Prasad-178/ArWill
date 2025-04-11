@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ConnectButton } from '@arweave-wallet-kit/react';
 
 // Optional: Import icons if you want to use them in feature cards
 // import { Lock, Clock, Users, FileText } from "lucide-react";
@@ -37,7 +36,6 @@ export default function Home() {
                Arweave keeps your story alive — immutable, unstoppable, and forever online.
              </p>
           </div>
-          <ConnectButton />
         </div>
 
         {/* Right Column (Image) */}
