@@ -156,9 +156,9 @@ export async function uploadWillToArweave(
 
   // 2. Initialize Arweave
   const arweave = Arweave.init({
-    host: "arweave.net",
-    port: 443,
-    protocol: "https",
+    host: "localhost",
+    port: 1984,
+    protocol: "http",
     timeout: 20000,
     logging: false,
   });

@@ -17,22 +17,11 @@ export default function Will() {
 
   return (
     <div className="flex flex-1 items-center justify-center p-4 py-2 lg:p-6">
-      <div className="flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-16 w-full max-w-6xl">
+      <div className="flex flex-col lg:flex-row items-stretch justify-center gap-8 lg:gap-16 w-full max-w-6xl">
 
-        <div className="w-full max-w-md lg:w-1/2 flex justify-center items-center order-last lg:order-first">
-          <Image
-            src="/will.jpg"
-            alt="A path branching into two, symbolizing choice"
-            width={600}
-            height={400}
-            priority
-            className="object-contain rounded-lg shadow-md w-full h-auto"
-          />
-        </div>
-
-        <div className="w-full max-w-md lg:w-1/2 flex justify-center">
+        <div className="w-full max-w-md lg:w-1/2 flex justify-center h-[400px]">
           {activeAddress ? (
-            <Card className="w-full shadow-lg">
+            <Card className="w-full shadow-lg h-full flex flex-col justify-center">
               <CardHeader>
                 <CardTitle>Manage Your Digital Will</CardTitle>
                 <CardDescription className="italic pt-1">
@@ -49,15 +38,27 @@ export default function Will() {
               </CardContent>
             </Card>
           ) : (
-            <Card className="w-full shadow-lg">
+            <Card className="w-full shadow-lg h-full flex flex-col justify-center">
               <CardHeader>
                 <CardTitle>Connect Your Wallet</CardTitle>
                 <CardDescription>
                   Please connect your Arweave wallet using the button in the navigation bar to manage your will document.
                 </CardDescription>
               </CardHeader>
+              <CardContent />
             </Card>
           )}
+        </div>
+
+        <div className="w-full max-w-md lg:w-1/2 flex justify-center items-center h-[400px]">
+          <Image
+            src="/will.jpg"
+            alt="A path branching into two, symbolizing choice"
+            width={600}
+            height={400}
+            priority
+            className="object-contain rounded-lg shadow-md w-full h-full"
+          />
         </div>
 
       </div>

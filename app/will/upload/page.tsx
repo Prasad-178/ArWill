@@ -155,12 +155,11 @@ export default function AddWillPage() {
 
   return (
     <RequireWallet>
-      {/* Slightly reduce vertical padding */}
-      <div className="flex flex-1 items-center justify-center p-4 py-2 lg:p-6"> {/* Adjusted padding */}
-        {/* Inner container for the two columns */}
+      <div className="flex flex-1 items-center justify-center p-4 py-2 lg:p-6">
+        {/* Inner container */}
         <div className="flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-16 w-full max-w-6xl">
 
-          {/* Left Column: Form Card */}
+          {/* Left Column: Form Card - Comes first in code */}
           <div className="w-full max-w-md lg:w-1/2 flex justify-center">
             <Card className="w-full">
               <CardHeader>
@@ -231,17 +230,20 @@ export default function AddWillPage() {
             </Card>
           </div>
 
-          {/* Right Column: Image with Text Overlay */}
-          <div className="w-full max-w-md lg:w-1/2 flex justify-center items-center mt-8 lg:mt-0">
-            <div className="relative w-full h-auto max-w-[500px]">
+          {/* Right Column: Image with Text Overlay - Comes second in code */}
+          {/* Added fixed height container */}
+          <div className="w-full max-w-md lg:w-1/2 flex justify-center items-center h-[400px]"> {/* Consistent height */}
+            {/* Relative container for overlay */}
+            <div className="relative w-full h-full"> {/* Make relative container fill height */}
               <Image
                 src="/vault.jpg"
                 alt="Vault representing secure will storage"
-                width={1000}
-                height={1000}
+                width={1000} // Aspect ratio hint
+                height={1000} // Aspect ratio hint
                 priority
-                className="object-contain w-full h-full rounded-md"
+                className="object-contain w-full h-full rounded-md" // Fill container
               />
+              {/* Absolute positioned overlay for text */}
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 p-4 text-center rounded-md">
                 <p className="text-white text-2xl md:text-3xl lg:text-4xl font-bold mb-2">
                   Your Legacy, Secured Forever.
