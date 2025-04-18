@@ -10,6 +10,18 @@ import { processId, TAGS } from "../../ao_config";
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ACCEPTED_FILE_TYPES = ["application/pdf"];
 
+// Custom validation for comma-separated emails
+const commaSeparatedEmails = z.string()
+  .min(1, "At least one beneficiary email is required.")
+  .refine(value => {
+    if (!value) return false;
+    const emails = value.split(',').map(email => email.trim()).filter(email => email.length > 0);
+    if (emails.length === 0) return false; // Must have at least one email after trimming/filtering
+    // Basic check for email format - Zod's email() doesn't work directly on the list
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emails.every(email => emailRegex.test(email));
+  }, "Please provide a comma-separated list of valid email addresses.");
+
 const UploadWillSchema = z.object({
   willFile: z
     .instanceof(File)
@@ -19,17 +31,21 @@ const UploadWillSchema = z.object({
       (file) => ACCEPTED_FILE_TYPES.includes(file?.type),
       "Only .pdf files are accepted."
     ),
-  guardianEmail: z
+  // Changed from guardianEmail to beneficiaries, using custom validation
+  beneficiaries: commaSeparatedEmails,
+  // Added optional Power of Attorney email
+  powerOfAttorneyEmail: z
     .string()
-    .email("Please enter a valid email address.")
-    .min(1, "Guardian email is required."),
+    .email("Please enter a valid email address for the Power of Attorney.")
+    .optional()
+    .or(z.literal('')), // Allow empty string
   userWalletAddress: z
     .string()
     .min(1, "User wallet address is required."),
   userEmail: z
     .string()
-    .email("Please enter a valid email address.")
-    .optional(), // Make it optional since it might not always be available
+    .email("Please enter a valid user email address.")
+    .min(1, "User email is required."), // Make user email required as per handler logic
 });
 
 // Define the structure of the response from the action
@@ -130,9 +146,10 @@ export async function uploadWillToArweave(
   // 1. Validate form data
   const validatedFields = UploadWillSchema.safeParse({
     willFile: formData.get("willFile"),
-    guardianEmail: formData.get("guardianEmail"),
+    beneficiaries: formData.get("beneficiaries"), // Changed from guardianEmail
+    powerOfAttorneyEmail: formData.get("powerOfAttorneyEmail"), // Added POA email
     userWalletAddress: formData.get("userWalletAddress"),
-    userEmail: formData.get("userEmail"), // Get userEmail from FormData
+    userEmail: formData.get("userEmail"),
   });
 
   if (!validatedFields.success) {
@@ -147,10 +164,12 @@ export async function uploadWillToArweave(
     };
   }
 
-  const { willFile, guardianEmail, userWalletAddress, userEmail } = validatedFields.data;
+  // Destructure validated data including new fields
+  const { willFile, beneficiaries, powerOfAttorneyEmail, userWalletAddress, userEmail } = validatedFields.data;
 
-  // Log the guardian email, user address, and user email
-  console.log("Guardian Email:", guardianEmail);
+  // Log the validated data
+  console.log("Beneficiaries:", beneficiaries);
+  console.log("Power of Attorney Email:", powerOfAttorneyEmail);
   console.log("User Wallet Address:", userWalletAddress);
   console.log("User Email:", userEmail);
 
@@ -206,17 +225,19 @@ export async function uploadWillToArweave(
     const keyTxId = await uploadToArweave(encryptedSymmetricKey, "application/octet-stream", wallet, arweave);
     console.log(`Encrypted symmetric key uploaded with transaction ID: ${keyTxId}`);
 
-    // 10. Store will information in database
-    console.log("Storing will information in database...");
+    // 10. Store will information in database (AO)
+    console.log("Storing will information via AO...");
     try {
+      // Pass updated fields to addWill
       const res = await addWill(
-        guardianEmail, 
-        pdfTxId, 
-        keyTxId, 
-        privateKey, 
-        wallet, 
-        userWalletAddress, 
-        userEmail || "" // Pass the user email to addWill, use empty string as fallback
+        beneficiaries,
+        powerOfAttorneyEmail || "", // Pass empty string if optional field is undefined/null
+        pdfTxId,
+        keyTxId,
+        privateKey,
+        wallet,
+        userWalletAddress,
+        userEmail // User email is now required by schema
       );
       console.log("Will added successfully via AO:", res);
     } catch (apiError) {
@@ -246,40 +267,59 @@ export async function uploadWillToArweave(
   }
 }
 
-// Update the addWill function to accept userEmail
+// Update the addWill function signature and tags
 const addWill = async (
-  guardianEmail: string, 
-  pdfTxId: string, 
-  keyTxId: string, 
-  privateKey: string, 
+  beneficiaries: string, // Comma-separated string
+  powerOfAttorneyEmail: string, // Optional email
+  pdfTxId: string,
+  keyTxId: string,
+  privateKey: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  wallet: any, 
-  userWalletAddress: string, 
-  userEmail: string
+  wallet: any,
+  userWalletAddress: string,
+  userEmail: string // Required user email
 ) => {
-  console.log("Adding will with params:", { guardianEmail, pdfTxId, keyTxId, privateKey, userWalletAddress, userEmail });
+  console.log("Adding will with params:", { beneficiaries, powerOfAttorneyEmail, pdfTxId, keyTxId, /* privateKey hidden */ userWalletAddress, userEmail });
+
+  // Dynamically build tags
+  const tags = [
+    ...TAGS.CREATE_WILL,
+    { name: "beneficiaries", value: beneficiaries }, // Use the beneficiaries string directly
+    { name: "pdfTxId", value: pdfTxId },
+    { name: "keyTxId", value: keyTxId },
+    { name: "pvtKey", value: privateKey },
+    { name: "userWalletAddress", value: userWalletAddress },
+    { name: "email", value: userEmail } // Use userEmail for the creator's email tag
+  ];
+
+  // Conditionally add the PowerOfAttorneyEmail tag if provided
+  if (powerOfAttorneyEmail && powerOfAttorneyEmail.trim().length > 0) {
+    tags.push({ name: "PowerOfAttorneyEmail", value: powerOfAttorneyEmail });
+  }
+
+  console.log("Sending AO message with tags:", tags);
+
   try {
     const messageId = await message({
       process: processId!,
-      tags: [
-        ...TAGS.CREATE_WILL,
-        { name: "beneficiaries", value: guardianEmail },
-        { name: "pdfTxId", value: pdfTxId },
-        { name: "keyTxId", value: keyTxId },
-        { name: "pvtKey", value: privateKey },
-        { name: "userWalletAddress", value: userWalletAddress },
-        { name: "email", value: userEmail } // Use userEmail in the tags
-      ],
+      tags: tags, // Use the dynamically built tags array
       signer: createDataItemSigner(wallet),
-      data: "",
+      data: "", // No data payload needed for this action
     });
 
     console.log("AO Message sent, ID:", messageId);
+
+    // Consider adding result check here if needed
+    // const response = await result({ message: messageId, process: processId! });
+    // console.log("AO Create-Will Response:", response);
+    // if (response?.Messages?.[0]?.Data !== 'Success') { // Adjust based on actual success message
+    //   throw new Error(`AO Create-Will failed: ${response?.Messages?.[0]?.Data}`);
+    // }
 
     return { messageId };
 
   } catch (err) {
     console.error("Failed to send AO message:", err);
-    throw err;
+    throw err; // Re-throw the error to be caught by the main function
   }
 }
