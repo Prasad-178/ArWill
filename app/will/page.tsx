@@ -1,7 +1,7 @@
 "use client";
 
 import { useActiveAddress, useConnection } from '@arweave-wallet-kit/react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Card,
   CardDescription,
@@ -36,11 +36,27 @@ export default function Will() {
   const [isWillLoading, setIsWillLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Ref to track if email fetch has been attempted for the current connection session
+  const emailFetchAttempted = useRef(false);
+  // Ref to track if will fetch has been attempted for the current email
+  const willFetchAttempted = useRef(false);
+
   useEffect(() => {
-    const fetchUserEmail = async () => {
-      if (connected && activeAddress && api?.othent && !userEmail && !isEmailLoading) {
+    // Reset attempt flag if connection status changes
+    if (!connected) {
+      emailFetchAttempted.current = false;
+      setUserEmail(null); // Clear email if disconnected
+      setError(null);
+      setIsEmailLoading(false);
+      return;
+    }
+
+    // Only attempt fetch if connected, have API, and haven't attempted yet for this session
+    if (connected && activeAddress && api?.othent && !emailFetchAttempted.current) {
+      const fetchUserEmail = async () => {
         setIsEmailLoading(true);
         setError(null);
+        emailFetchAttempted.current = true; // Mark as attempted
         console.log("Wallet connected. Attempting to fetch user details via Othent...");
         try {
           const details = await api.othent.getUserDetails();
@@ -61,52 +77,57 @@ export default function Will() {
         } finally {
           setIsEmailLoading(false);
         }
-      } else if (!connected) {
-        setUserEmail(null);
-        setIsEmailLoading(false);
-        setError(null);
-      }
-    };
-
-    fetchUserEmail();
-  }, [connected, activeAddress, api, userEmail, isEmailLoading]);
+      };
+      fetchUserEmail();
+    }
+  }, [connected, activeAddress, api]); // Depend only on connection/API status
 
   useEffect(() => {
-    const fetchWillStatus = async () => {
-      if (connected && activeAddress && userEmail && !isEmailLoading) {
+    // Reset attempt flag if email changes (e.g., user reconnects with different account)
+    if (userEmail !== willFetchAttempted.current) {
+      willFetchAttempted.current = false;
+      setMyWill(null); // Clear old will data if email changes
+    }
+
+    // Only attempt fetch if we have an email and haven't attempted for this email yet
+    if (connected && userEmail && !willFetchAttempted.current) {
+      const fetchWillStatus = async () => {
         setIsWillLoading(true);
-        setError(null);
-        setMyWill(null);
+        setError(null); // Clear previous errors specific to will fetching
+        willFetchAttempted.current = userEmail; // Mark as attempted for this email
 
         console.log("Fetching will status for user:", userEmail);
         try {
-          const wills = await getMyCreatedWillsAction(userEmail);
-          if (wills && wills.length > 0) {
-            setMyWill(wills[0]);
-            console.log("User has an existing will:", wills[0]);
+          const result = await getMyCreatedWillsAction(userEmail);
+
+          if (Array.isArray(result) && result.length > 0) {
+            setMyWill(result[0]); // Set the first will found
+            console.log("User has an existing will:", result[0]);
           } else {
-            setMyWill(null);
-            console.log("User does not have an existing will.");
+            setMyWill(null); // No will found or empty array returned
+            console.log("User does not have an existing will or action returned null/empty.");
           }
-        } catch (err) {
+        } catch (err: any) { // Catch specific error type if possible
           console.error("Error fetching user will:", err);
-          setError("Failed to check your will status. Please try again.");
+          setError(`Failed to check your will status: ${err.message || 'Please try again.'}`);
           setMyWill(null);
         } finally {
           setIsWillLoading(false);
         }
-      } else if (!userEmail && connected && !isEmailLoading) {
-        setIsWillLoading(false);
-        setMyWill(null);
-        console.log("Connected, but no user email available to fetch will status.");
-      } else if (!connected) {
-        setIsWillLoading(false);
-        setMyWill(null);
-      }
-    };
-
-    fetchWillStatus();
-  }, [connected, activeAddress, userEmail, isEmailLoading]);
+      };
+      fetchWillStatus();
+    } else if (!userEmail && connected) {
+      // If connected but email is null (e.g., Othent failed), ensure will loading is false
+      setIsWillLoading(false);
+      setMyWill(null);
+      willFetchAttempted.current = false; // Reset if email becomes null
+    } else if (!connected) {
+      // If disconnected, ensure will loading is false
+      setIsWillLoading(false);
+      setMyWill(null);
+      willFetchAttempted.current = false; // Reset if disconnected
+    }
+  }, [connected, userEmail]); // Depend only on connection status and the obtained userEmail
 
   const isLoading = isEmailLoading || isWillLoading;
 
@@ -189,20 +210,24 @@ export default function Will() {
              renderNoWalletState()
           ) : isLoading ? (
             renderLoadingState()
-          ) : error ? (
+          ) : error && !isLoading ? (
              <Card className="w-full shadow-lg h-full flex flex-col justify-center items-center text-destructive">
                 <CardHeader><CardTitle>Error</CardTitle></CardHeader>
                 <CardContent><p>{error}</p></CardContent>
              </Card>
-          ) : userEmail && myWill ? (
-            renderWillExistsDashboard()
-          ) : userEmail && !myWill ? (
-            renderNoWillState()
-          ) : !userEmail && !isLoading && !error ? (
-             <Card className="w-full shadow-lg h-full flex flex-col justify-center items-center text-muted-foreground">
-                <CardHeader><CardTitle>Verifying Email...</CardTitle></CardHeader>
-                <CardContent><p>Attempting to retrieve the email associated with your wallet.</p></CardContent>
-             </Card>
+          ) : connected && !isLoading && !error ? (
+            userEmail && myWill ? (
+              renderWillExistsDashboard()
+            ) : userEmail && !myWill ? (
+              renderNoWillState()
+            ) : !userEmail && !isEmailLoading ? (
+               <Card className="w-full shadow-lg h-full flex flex-col justify-center items-center text-muted-foreground">
+                  <CardHeader><CardTitle>Email Verification Failed</CardTitle></CardHeader>
+                  <CardContent><p>Could not retrieve the email associated with your wallet via Othent.</p></CardContent>
+               </Card>
+            ) : (
+               renderLoadingState() // Fallback to loading if state is inconsistent
+            )
           ) : (
              renderNoWalletState()
           )}

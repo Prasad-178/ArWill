@@ -1,287 +1,217 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import * as z from "zod";
-import { useFormStatus } from "react-dom";
-import { useActionState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
 } from "@/components/ui/card";
-import { useRef, useEffect, useState } from "react";
-import { retrieveWill } from "./actions"; // Import the dummy function
 import { toast } from "sonner";
-import RequireWallet from '../components/RequireWallet';
-import { useActiveAddress, useApi } from "@arweave-wallet-kit/react";
-import Image from "next/image"; // Import Next.js Image
+import RequireWallet from '../components/RequireWallet'; // Adjust path if needed
+import { useApi, useConnection } from "@arweave-wallet-kit/react";
+import Image from "next/image";
+import Link from "next/link";
+import { processId } from "../../ao_config"; // Keep processId if needed elsewhere, otherwise remove
+import { getMyRolesAction, MyRoles, RoleInfo } from "./actions"; // Import the action and type
+import { Skeleton } from "@/components/ui/skeleton";
+import { List, UserCheck, FileText } from "lucide-react"; // Icons
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+export default function RetrieveWillListPage() {
+    const api = useApi();
+    const { connected } = useConnection(); // Keep connected state for Othent fetch and UI logic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [othentDetails, setOthentDetails] = useState<any>(null);
+    const [roles, setRoles] = useState<MyRoles | null>(null);
+    const [isLoadingOthent, setIsLoadingOthent] = useState(true);
+    const [isLoadingRoles, setIsLoadingRoles] = useState(false); // Keep this for loading roles result
+    const [error, setError] = useState<string | null>(null);
 
-const ACCEPTED_FILE_TYPES = ["application/pdf"];
+    // Effect 1: Fetch Othent details
+    useEffect(() => {
+        const getOthentDetails = async () => {
+            console.log("Attempting to fetch Othent details...");
+            setIsLoadingOthent(true);
+            setError(null); // Clear previous errors
+            setRoles(null); // Clear previous roles
+            try {
+                // Use a timeout for Othent details fetch as well
+                const details = await Promise.race([
+                    api?.othent?.getUserDetails(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error("Othent details fetch timed out")), 5000)) // 5 second timeout
+                ]);
 
-// Define the form schema using Zod (client-side validation)
-const formSchema = z.object({
-  willOwnerEmail: z
-    .string({ required_error: "Will owner's email is required." })
-    .email("Please enter a valid email address."),
-  deathCertificate: z
-    .instanceof(File, { message: "File is required." })
-    .refine((file) => file?.size > 0, "File cannot be empty.")
-    .refine((file) => file?.size <= MAX_FILE_SIZE, `Max file size is 5MB.`)
-    .refine(
-      (file) => ACCEPTED_FILE_TYPES.includes(file?.type),
-      "Only .pdf files are accepted."
-    ),
-});
+                // const details = await api?.othent?.getUserDetails(); // Original call
+                setOthentDetails(details);
+                console.log('Othent details fetched:', details);
+                if (!details?.email) {
+                     console.warn("Othent details fetched, but no email found.");
+                }
+            } catch (err: any) {
+                 console.error("Error fetching Othent details:", err);
+                 // Check if it's the timeout error
+                 if (err.message === "Othent details fetch timed out") {
+                     setError("Failed to fetch user details (timeout). Please try reconnecting your wallet or check Othent status.");
+                 } else {
+                     setError("Failed to fetch your user details. Please try reconnecting your wallet.");
+                 }
+                 setOthentDetails(null);
+            } finally {
+                setIsLoadingOthent(false);
+            }
+        };
 
-// Separate component for the submit button to use useFormStatus
-function SubmitButton({ isFileUploaded }: { isFileUploaded: boolean }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" className="w-full" disabled={pending || !isFileUploaded}>
-      {pending ? "Retrieving..." : "Retrieve Will"}
-    </Button>
-  );
-}
-
-// Helper function to trigger download from base64 data
-const downloadPdfFromBase64 = (base64Data: string, fileName: string) => {
-  try {
-    // Decode base64 string
-    const byteCharacters = atob(base64Data);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-
-    // Create a Blob
-    const blob = new Blob([byteArray], { type: "application/pdf" });
-
-    // Create an object URL
-    const url = URL.createObjectURL(blob);
-
-    // Create a temporary link element
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName; // Set the desired file name
-
-    // Append to the document, click, and remove
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    // Revoke the object URL to free up memory
-    URL.revokeObjectURL(url);
-  } catch (error) {
-    console.error("Failed to initiate download:", error);
-    toast.error("Download Failed", {
-      description: "Could not prepare the PDF file for download.",
-    });
-  }
-};
-
-export default function RetrieveWillPage() {
-  const activeAddress = useActiveAddress();
-  const api = useApi();
-  const [formKey, setFormKey] = useState(Date.now()); // Key to force form reset
-  const [isFileUploaded, setIsFileUploaded] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [othentDetails, setOthentDetails] = useState<any>(null);
-  
-  // useActionState hook to manage server action state
-  const [state, formAction] = useActionState(retrieveWill, null);
-
-  // Define your form (primarily for client-side validation)
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      willOwnerEmail: "",
-      deathCertificate: undefined,
-    },
-  });
-
-  // Ref for the file input to reset it
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Fetch Othent details when the component mounts
-  useEffect(() => {
-    const getOthentDetails = async () => {
-      const details = await api?.othent?.getUserDetails();
-      setOthentDetails(details);
-      console.log('Othent details:', details);
-    };
-    
-    if (api?.othent) {
-      getOthentDetails();
-    }
-  }, [api]);
-
-  // Effect to show toast messages and handle download based on server action state
-  useEffect(() => {
-    if (state) {
-      if (state.success === true) {
-        toast.success("Success!", {
-          description: state.message,
-          duration: 5000,
-        });
-
-        // --- Trigger download if data is present ---
-        if (state.decryptedPdfData) {
-          downloadPdfFromBase64(state.decryptedPdfData, "will_document.pdf");
-        } else {
-          // Handle case where success is true but no data (e.g., maybe just confirmation)
-          console.log("Retrieval successful, but no PDF data returned.");
+        if (api?.othent && connected) { // Also check connected here for Othent
+            getOthentDetails();
+        } else if (api && !connected) {
+            console.log("API loaded, but wallet not connected for Othent fetch.");
+            setIsLoadingOthent(false); // Not loading if not connected
+            setOthentDetails(null); // Clear details if disconnected
+        } else if (!api) {
+            console.log("API not yet available for Othent fetch.");
+            // Keep loading until API is available or timeout occurs (handled implicitly)
         }
-        // --- End download logic ---
+    }, [api, connected]); // Add connected dependency for Othent fetch too
 
-        // Reset the form visually by changing the key
-        setFormKey(Date.now());
-        form.reset({ willOwnerEmail: "", deathCertificate: undefined }); // Reset react-hook-form state
-        setIsFileUploaded(false); // Reset file upload state
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ""; // Reset the actual file input element
+    // Effect 2: Fetch roles once Othent email is available
+    useEffect(() => {
+        // Only depends on Othent loading state and email availability now
+        if (!isLoadingOthent && othentDetails?.email) {
+            const fetchRoles = async () => {
+                setIsLoadingRoles(true);
+                setError(null);
+                setRoles(null);
+
+                try {
+                    // Directly call the server action with the email
+                    console.log(`Calling server action getMyRolesAction for email: ${othentDetails.email}`);
+                    const result = await getMyRolesAction(othentDetails.email);
+
+                    // Handle the result from the server action (same logic as before)
+                    if (result.success && result.roles) {
+                        setRoles(result.roles);
+                        console.log("Roles result received and set:", result.roles);
+                    } else {
+                        setError(result.error || "Failed to fetch your roles result.");
+                        console.error("Failed to fetch roles result:", result.error);
+                        setRoles(null);
+                    }
+                } catch (err: any) {
+                    // Catch errors during the action call itself (e.g., network issues)
+                    console.error("Error calling getMyRolesAction:", err);
+                    setError(err.message || "An unexpected error occurred while fetching roles.");
+                    setRoles(null);
+                } finally {
+                    setIsLoadingRoles(false);
+                }
+            };
+            fetchRoles();
+        } else if (!isLoadingOthent && !othentDetails?.email) {
+            // Othent loaded, but no email
+            console.log("Othent details loaded, but no email available to fetch roles.");
+            setRoles(null);
+            setIsLoadingRoles(false);
+            // Optionally set an error if email is required
+            // setError("Could not verify your email via Othent.");
         }
-      } else if (state.success === false) {
-        // Show an error toast
-        toast.error("Retrieval Failed", {
-          description: state.message + (state.error ? ` Error: ${state.error}` : ''),
-          duration: 5000,
-        });
-      }
-    }
-  }, [state, form]); // Added form to dependency array as form.reset is used
+        // No longer depends on 'connected' for this specific effect
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [othentDetails?.email, isLoadingOthent]); // Dependencies are now just email and Othent loading state
 
-  // Client-side validation before calling server action
-  const handleFormSubmit = async (data: z.infer<typeof formSchema>) => {
-    // Create FormData to send to the server action
-    const formData = new FormData();
-    formData.append("deathCertificate", data.deathCertificate);
-    formData.append("willOwnerEmail", data.willOwnerEmail);
-    
-    // Add the activeAddress to the FormData
-    if (activeAddress) {
-      formData.append("userWalletAddress", activeAddress);
-    } else {
-      console.error("User wallet address not available.");
-      toast.error("Error", { description: "Wallet address not found. Please ensure your wallet is connected." });
-      return; // Prevent form submission if address is missing
-    }
-
-    // Add Othent email to the FormData if available
-    if (othentDetails?.email) {
-      formData.append("email", othentDetails.email);
-      console.log("Adding email to form data:", othentDetails.email);
-    } else {
-      console.log("No Othent email available");
-    }
-
-    // Manually trigger the server action
-    await formAction(formData);
-  };
-
-  return (
-    <RequireWallet>
-      <div className="flex flex-1 items-center justify-center p-4 py-2 lg:p-6">
-        <div className="flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-16 w-full max-w-6xl">
-          <div className="w-full max-w-md lg:w-1/2 flex justify-center">
-            <Card className="w-full shadow-lg">
-              <CardHeader>
-                <CardTitle>Retrieve a Digital Will</CardTitle>
-                <CardDescription className="italic pt-1">
-                  "Patience and perseverance have a magical effect before which difficulties disappear and obstacles vanish." - Accessing the secured legacy.
-                  <br />
-                  <span className="not-italic text-xs text-muted-foreground block pt-2">
-                    Requires owner's email and death certificate (PDF, max 5MB).
-                  </span>
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Form {...form} key={formKey}>
-                  <form
-                    onSubmit={form.handleSubmit(handleFormSubmit)}
-                    className="space-y-6"
-                  >
-                    <FormField
-                      control={form.control}
-                      name="willOwnerEmail"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Will Owner's Email</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="email"
-                              placeholder="owner@example.com"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="deathCertificate"
-                      render={({ field: { onChange, value, onBlur, name, ref: rhfRef } }) => (
-                        <FormItem>
-                          <FormLabel>Death Certificate (PDF only)</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="file"
-                              accept=".pdf"
-                              ref={fileInputRef}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                onChange(file ?? undefined);
-                                setIsFileUploaded(!!file);
-                              }}
-                              onBlur={onBlur}
-                              name={name}
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            Upload the official document (max 5MB).
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    {state && state.success === false && !state.error?.includes('{') && (
-                      <p className="text-sm font-medium text-destructive">{state.message}</p>
-                    )}
-                    <SubmitButton isFileUploaded={isFileUploaded} />
-                  </form>
-                </Form>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="w-full max-w-md lg:w-1/2 flex justify-center items-center h-[400px]">
-            <Image
-              src="/key.jpg"
-              alt="Key unlocking a lock, symbolizing access"
-              width={500}
-              height={500}
-              priority
-              className="object-contain rounded-lg shadow-md w-full h-full"
-            />
-          </div>
+    const renderLoading = () => (
+        <div className="space-y-4">
+            <Skeleton className="h-8 w-3/4" />
+            <Skeleton className="h-6 w-full" />
+            <Skeleton className="h-6 w-5/6" />
+            <Skeleton className="h-8 w-1/2 mt-4" />
+            <Skeleton className="h-6 w-full" />
         </div>
-      </div>
-    </RequireWallet>
-  );
+    );
+
+    const renderError = () => (
+        <div className="text-destructive space-y-2">
+            <p><strong>Error:</strong> {error}</p>
+            <p>Please ensure your wallet is connected and you are logged in via Othent.</p>
+        </div>
+    );
+
+    const renderRolesList = (title: string, rolesInfo: RoleInfo[], icon: React.ReactNode) => (
+        <div>
+            <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">{icon} {title}</h3>
+            {rolesInfo.length > 0 ? (
+                <ul className="space-y-2 list-disc list-inside pl-2">
+                    {rolesInfo.map((role) => (
+                        <li key={role.pdfTxId} className="text-sm">
+                            <Link
+                                href={`/will/retrieve/${encodeURIComponent(role.pdfTxId)}`}
+                                className="text-blue-600 hover:underline hover:text-blue-800 break-all"
+                            >
+                                Will of: {role.email}
+                            </Link>
+                        </li>
+                    ))}
+                </ul>
+            ) : (
+                <p className="text-sm text-muted-foreground italic">None found.</p>
+            )}
+        </div>
+    );
+
+    // Update overall loading state (simpler now)
+    const isLoading = isLoadingOthent || isLoadingRoles;
+
+    return (
+        <RequireWallet>
+            <div className="flex flex-1 items-start justify-center p-4 py-6 lg:p-8">
+                <div className="flex flex-col lg:flex-row items-start justify-center gap-8 lg:gap-16 w-full max-w-4xl">
+
+                    {/* Left Column: Content Card */}
+                    <div className="w-full lg:w-2/3 flex justify-center">
+                        <Card className="w-full shadow-lg">
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2"><List /> Your Associated Wills</CardTitle>
+                                <CardDescription>
+                                    Here are the digital wills where you are listed as a beneficiary or have Power of Attorney. Click an identifier to view details and manage access.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                {isLoading ? (
+                                    renderLoading()
+                                ) : error ? (
+                                    renderError()
+                                ) : roles && (roles.BeneficiaryOf.length > 0 || roles.PowerOfAttorneyFor.length > 0) ? (
+                                    // Only render lists if roles exist and have content
+                                    <>
+                                        {renderRolesList("Beneficiary Of", roles.BeneficiaryOf, <FileText size={20} />)}
+                                        {renderRolesList("Power of Attorney For", roles.PowerOfAttorneyFor, <UserCheck size={20} />)}
+                                    </>
+                                ) : !isLoading && !error ? (
+                                     // Handles case where roles are loaded but empty, or othent failed before roles fetch
+                                     <p className="text-muted-foreground">
+                                         {othentDetails?.email ? "No wills found associated with your email." : "Could not verify your email to load associated wills."}
+                                     </p>
+                                ) : null /* Should not be reached if logic is correct */}
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Right Column: Image */}
+                    <div className="w-full lg:w-1/3 flex justify-center items-start pt-4 lg:pt-0">
+                         <div className="relative w-full max-w-sm h-[300px] lg:h-[400px]">
+                            <Image
+                                src="/key.jpg" // Or a more relevant image like a list/document
+                                alt="List of documents"
+                                layout="fill"
+                                objectFit="contain"
+                                priority
+                                className="rounded-lg shadow-md"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </RequireWallet>
+    );
 }
